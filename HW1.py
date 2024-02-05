@@ -4,7 +4,31 @@ from typing import List, Tuple
 
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
+import numpy as np
 
+
+
+def get_angle_to_x_axis(point_a: np.ndarray, point_b: np.ndarray) -> float:
+    vec = point_b - point_a
+    angle_rad = np.arctan2(vec[1], vec[0])
+    # if (point_a[0] - point_b[0]) == 0:
+    #     if point_a[1] > point_b[1]:
+    #         return 90
+    #     else:
+    #         return 270
+    # slope = (point_a[1] - point_b[1]) / (point_a[0] - point_b[0])
+    # angle_rad = np.arctan2(slope, 1)
+    angle_deg = np.degrees(angle_rad)
+    if angle_deg < 0:
+        return 360 + angle_deg
+    return angle_deg
+
+def sort_points_ccw(points):
+    centroid = np.mean(points, axis=0)
+    angles = np.arctan2(points[:, 1] - centroid[1], points[:, 0] - centroid[0])
+    sorted_indices = np.argsort(angles)
+    sorted_points = points[sorted_indices]
+    return sorted_points
 
 # TODO
 def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
@@ -14,11 +38,35 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     :param r: The radius of the rhombus
     :return: The polygon composed from the Minkowsky sums
     """
-    pass
+    o_index = 0
+    r_index = 0
+    vertex_o = sort_points_ccw(np.array(original_shape.exterior.coords)[:-1])
+    vertex_o = np.append(vertex_o, vertex_o[:2], axis=0)
+    vertex_r = np.array([(0, -r), (r, 0), (0, r), (-r, 0), (0, -r), (r, 0)])
+    vertex_new = []
+    while True:
+        new_point = np.add(vertex_o[o_index], vertex_r[r_index])
+        vertex_new.append(new_point)
+        r_angle = get_angle_to_x_axis(vertex_r[r_index], vertex_r[r_index + 1])
+        o_angle = get_angle_to_x_axis(vertex_o[o_index], vertex_o[o_index + 1])
+        if o_index > len(original_shape.exterior.coords) - 2:
+            o_angle += 360
+        if r_angle < o_angle:
+            r_index += 1
+        elif r_angle > o_angle:
+            o_index += 1
+        else:
+            r_index += 1
+            o_index += 1
+        if r_index == 4 and o_index == len(original_shape.exterior.coords) - 1:
+            break
+    return Polygon(vertex_new)
 
 
 # TODO
-def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> List[LineString]:
+def get_visibility_graph(
+    obstacles: List[Polygon], source=None, dest=None
+) -> List[LineString]:
     """
     Get The visibility graph of a given map
     :param obstacles: A list of the obstacles in the map
@@ -35,17 +83,25 @@ def is_valid_file(parser, arg):
 
 
 def get_points_and_dist(line):
-    source, dist = line.split(' ')
+    source, dist = line.split(" ")
     dist = float(dist)
-    source = tuple(map(float, source.split(',')))
+    source = tuple(map(float, source.split(",")))
     return source, dist
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
+    # print(get_minkowsky_sum(Polygon([(5,3), (5,4), (4,3)]), 3))
     parser = argparse.ArgumentParser()
-    parser.add_argument("Robot", help="A file that holds the starting position of the robot, and the distance from the center of the robot to any of its vertices")
-    parser.add_argument("Obstacles", help="A file that contains the obstacles in the map")
-    parser.add_argument("Query", help="A file that contains the ending position for the robot.")
+    parser.add_argument(
+        "Robot",
+        help="A file that holds the starting position of the robot, and the distance from the center of the robot to any of its vertices",
+    )
+    parser.add_argument(
+        "Obstacles", help="A file that contains the obstacles in the map"
+    )
+    parser.add_argument(
+        "Query", help="A file that contains the ending position for the robot."
+    )
     args = parser.parse_args()
     obstacles = args.Obstacles
     robot = args.Robot
@@ -54,14 +110,14 @@ if __name__ == '__main__':
     is_valid_file(parser, robot)
     is_valid_file(parser, query)
     workspace_obstacles = []
-    with open(obstacles, 'r') as f:
+    with open(obstacles, "r") as f:
         for line in f.readlines():
-            ob_vertices = line.split(' ')
-            if ',' not in ob_vertices:
+            ob_vertices = line.split(" ")
+            if "," not in ob_vertices:
                 ob_vertices = ob_vertices[:-1]
-            points = [tuple(map(float, t.split(','))) for t in ob_vertices]
+            points = [tuple(map(float, t.split(","))) for t in ob_vertices]
             workspace_obstacles.append(Polygon(points))
-    with open(robot, 'r') as f:
+    with open(robot, "r") as f:
         source, dist = get_points_and_dist(f.readline())
 
     # step 1:
@@ -87,11 +143,11 @@ if __name__ == '__main__':
     plotter2.show_graph()
 
     # step 3:
-    with open(query, 'r') as f:
-        dest = tuple(map(float, f.readline().split(',')))
+    with open(query, "r") as f:
+        dest = tuple(map(float, f.readline().split(",")))
 
     lines = get_visibility_graph(c_space_obstacles, source, dest)
-    #TODO: fill in the next line
+    # TODO: fill in the next line
     shortest_path, cost = None, None
 
     plotter3 = Plotter()
@@ -100,6 +156,5 @@ if __name__ == '__main__':
     plotter3.add_robot(dest, dist)
     plotter3.add_visibility_graph(lines)
     plotter3.add_shorterst_path(list(shortest_path))
-
 
     plotter3.show_graph()
