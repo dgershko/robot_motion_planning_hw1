@@ -5,7 +5,8 @@ from typing import List, Tuple
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
 import numpy as np
-
+from itertools import product, filterfalse
+from pprint import pprint
 
 
 def get_angle_to_x_axis(point_a: np.ndarray, point_b: np.ndarray) -> float:
@@ -23,12 +24,14 @@ def get_angle_to_x_axis(point_a: np.ndarray, point_b: np.ndarray) -> float:
         return 360 + angle_deg
     return angle_deg
 
+
 def sort_points_ccw(points):
     centroid = np.mean(points, axis=0)
     angles = np.arctan2(points[:, 1] - centroid[1], points[:, 0] - centroid[0])
     sorted_indices = np.argsort(angles)
     sorted_points = points[sorted_indices]
     return sorted_points
+
 
 # TODO
 def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
@@ -74,7 +77,27 @@ def get_visibility_graph(
     :param dest: The destination of the query. None for part 1.
     :return: A list of LineStrings holding the edges of the visibility graph
     """
-    pass
+    v_graph_edges = []  # type: List[LineString]
+    for o_index, obstacle in enumerate(obstacles):
+        obstacle_vertices = np.array(obstacle.boundary.coords)
+        try:
+            other_obstacle_vertices = np.concatenate(
+                [
+                    np.array(other_obstacle.boundary.coords)
+                    for other_obstacle in obstacles[o_index + 1 :]
+                ]
+            )
+        except ValueError:
+            break
+        vertex_pairs = product(obstacle_vertices, other_obstacle_vertices)
+        v_graph_edges.extend(
+            filterfalse(
+                lambda edge: any(edge.crosses(obstacle) for obstacle in obstacles),
+                [LineString(pair) for pair in vertex_pairs],
+            )
+        )
+    # TODO: add source, dest
+    return v_graph_edges
 
 
 def is_valid_file(parser, arg):
