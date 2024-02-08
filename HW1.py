@@ -78,26 +78,78 @@ def get_visibility_graph(
     :return: A list of LineStrings holding the edges of the visibility graph
     """
     v_graph_edges = []  # type: List[LineString]
-    for o_index, obstacle in enumerate(obstacles):
-        obstacle_vertices = np.array(obstacle.boundary.coords)
-        try:
-            other_obstacle_vertices = np.concatenate(
-                [
-                    np.array(other_obstacle.boundary.coords)
-                    for other_obstacle in obstacles[o_index + 1 :]
-                ]
-            )
-        except ValueError:
-            break
-        vertex_pairs = product(obstacle_vertices, other_obstacle_vertices)
+    obstacle_vertices = np.concatenate(
+        [np.array(obstacle.boundary.coords) for obstacle in obstacles]
+    )
+    vertex_index = 0
+    for obstacle in obstacles:
+        num_vertices = len(obstacle.boundary.coords)
+        current_vertices = obstacle_vertices[vertex_index : vertex_index + num_vertices]
+        other_vertices = obstacle_vertices[vertex_index + num_vertices :]
+        vertex_pairs = product(current_vertices, other_vertices)
         v_graph_edges.extend(
             filterfalse(
-                lambda edge: any(edge.crosses(obstacle) for obstacle in obstacles),
+                lambda edge: any(edge.crosses(obs) for obs in obstacles),
                 [LineString(pair) for pair in vertex_pairs],
             )
         )
-    # TODO: add source, dest
+        vertex_index += num_vertices
+    if source:
+        v_graph_edges.extend(
+            filterfalse(
+                lambda edge: any(edge.crosses(obs) for obs in obstacles),
+                [LineString(pair) for pair in product([source], obstacle_vertices)],
+            )
+        )
+    if dest:
+        v_graph_edges.extend(
+            filterfalse(
+                lambda edge: any(edge.crosses(obs) for obs in obstacles),
+                [LineString(pair) for pair in product([dest], obstacle_vertices)],
+            )
+        )
     return v_graph_edges
+
+
+def get_shortest_path(visibility_graph: List[LineString], src, dest):
+    """
+    literally just dijekstra's
+    """
+    vertices = set(vertex for edge in visibility_graph for vertex in edge.coords)
+    unvisited = list(vertices)  # type: list[list[int]]
+    dist = {}  # type: dict[list[int], int]
+    prev = {}  # type: dict[list[int], list[int]]
+    for vertex in vertices:
+        dist[vertex] = np.inf
+        prev[vertex] = None
+    dist[src] = 0
+
+    while unvisited:
+        current_vertex = min(
+            {vertex: dist[vertex] for vertex in unvisited}, key=dist.get
+        )
+        unvisited.remove(current_vertex)
+        if current_vertex == dest:
+            path = [current_vertex]  # type: list[LineString]
+            while prev[current_vertex]:
+                path.insert(0, prev[current_vertex])
+                current_vertex = prev[current_vertex]
+            return path, LineString(path).length
+
+        # list of unvisited vertices such that a line connects them and the current vertex current_vertex
+        current_vertex_neighbors = [
+            vertex
+            for vertex in unvisited
+            if any(
+                LineString([current_vertex, vertex]).equals(edge)
+                for edge in visibility_graph
+            )
+        ]
+        for v in current_vertex_neighbors:
+            alt_dist = dist[current_vertex] + LineString([current_vertex, v]).length
+            if alt_dist < dist[v]:
+                dist[v] = alt_dist
+                prev[v] = current_vertex
 
 
 def is_valid_file(parser, arg):
@@ -171,7 +223,7 @@ if __name__ == "__main__":
 
     lines = get_visibility_graph(c_space_obstacles, source, dest)
     # TODO: fill in the next line
-    shortest_path, cost = None, None
+    shortest_path, cost = get_shortest_path(lines, source, dest)
 
     plotter3 = Plotter()
     plotter3.add_robot(source, dist)
