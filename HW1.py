@@ -5,7 +5,8 @@ from typing import List, Tuple
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
 import numpy as np
-from itertools import product, filterfalse
+# from itertools import product, filterfalse, islice
+import itertools
 from pprint import pprint
 
 
@@ -79,33 +80,36 @@ def get_visibility_graph(
     """
     v_graph_edges = []  # type: List[LineString]
     obstacle_vertices = np.concatenate(
-        [np.array(obstacle.boundary.coords) for obstacle in obstacles]
+        [obstacle.boundary.coords for obstacle in obstacles]
     )
     vertex_index = 0
     for obstacle in obstacles:
         num_vertices = len(obstacle.boundary.coords)
-        current_vertices = obstacle_vertices[vertex_index : vertex_index + num_vertices]
-        other_vertices = obstacle_vertices[vertex_index + num_vertices :]
-        vertex_pairs = product(current_vertices, other_vertices)
+        # current_vertices = obstacle_vertices[vertex_index : vertex_index + num_vertices]
+        # other_vertices = obstacle_vertices[vertex_index + num_vertices :]
+        # vertex_pairs = product(current_vertices, other_vertices)
+        current_vertices = itertools.islice(obstacle_vertices, vertex_index, vertex_index + num_vertices) # vertices of the current object
+        remaining_vertices = itertools.islice(obstacle_vertices, vertex_index, None) # vertices of objects we didnt add yet, including current object to include its edges
+        vertex_pairs = itertools.product(current_vertices, remaining_vertices)
         v_graph_edges.extend(
-            filterfalse(
-                lambda edge: any(edge.crosses(obs) for obs in obstacles),
+            itertools.filterfalse(
+                lambda edge: any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles),
                 [LineString(pair) for pair in vertex_pairs],
             )
         )
         vertex_index += num_vertices
     if source:
         v_graph_edges.extend(
-            filterfalse(
-                lambda edge: any(edge.crosses(obs) for obs in obstacles),
-                [LineString(pair) for pair in product([source], obstacle_vertices)],
+            itertools.filterfalse(
+                lambda edge: any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles),
+                [LineString(pair) for pair in itertools.product([source], obstacle_vertices)],
             )
         )
     if dest:
         v_graph_edges.extend(
-            filterfalse(
-                lambda edge: any(edge.crosses(obs) for obs in obstacles),
-                [LineString(pair) for pair in product([dest], obstacle_vertices)],
+            itertools.filterfalse(
+                lambda edge: any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles),
+                [LineString(pair) for pair in itertools.product([dest], obstacle_vertices)],
             )
         )
     return v_graph_edges
