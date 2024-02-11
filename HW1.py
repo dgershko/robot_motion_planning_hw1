@@ -5,21 +5,11 @@ from typing import List, Tuple
 from Plotter import Plotter
 from shapely.geometry.polygon import Polygon, LineString
 import numpy as np
-# from itertools import product, filterfalse, islice
-import itertools
-from pprint import pprint
 
 
 def get_angle_to_x_axis(point_a: np.ndarray, point_b: np.ndarray) -> float:
     vec = point_b - point_a
     angle_rad = np.arctan2(vec[1], vec[0])
-    # if (point_a[0] - point_b[0]) == 0:
-    #     if point_a[1] > point_b[1]:
-    #         return 90
-    #     else:
-    #         return 270
-    # slope = (point_a[1] - point_b[1]) / (point_a[0] - point_b[0])
-    # angle_rad = np.arctan2(slope, 1)
     angle_deg = np.degrees(angle_rad)
     if angle_deg < 0:
         return 360 + angle_deg
@@ -34,7 +24,6 @@ def sort_points_ccw(points):
     return sorted_points
 
 
-# TODO
 def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
     """
     Get the polygon representing the Minkowsky sum
@@ -66,60 +55,31 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
             break
     return Polygon(vertex_new)
 
-
-# TODO
-def get_visibility_graph(
-    obstacles: List[Polygon], source=None, dest=None
-) -> List[LineString]:
-    """
-    Get The visibility graph of a given map
-    :param obstacles: A list of the obstacles in the map
-    :param source: The starting position of the robot. None for part 1.
-    :param dest: The destination of the query. None for part 1.
-    :return: A list of LineStrings holding the edges of the visibility graph
-    """
-    v_graph_edges = []  # type: List[LineString]
-    obstacle_vertices = np.concatenate(
-        [obstacle.boundary.coords for obstacle in obstacles]
-    )
-    vertex_index = 0
-    for obstacle in obstacles:
-        num_vertices = len(obstacle.boundary.coords)
-        # current_vertices = obstacle_vertices[vertex_index : vertex_index + num_vertices]
-        # other_vertices = obstacle_vertices[vertex_index + num_vertices :]
-        # vertex_pairs = product(current_vertices, other_vertices)
-        current_vertices = itertools.islice(obstacle_vertices, vertex_index, vertex_index + num_vertices) # vertices of the current object
-        remaining_vertices = itertools.islice(obstacle_vertices, vertex_index, None) # vertices of objects we didnt add yet, including current object to include its edges
-        vertex_pairs = itertools.product(current_vertices, remaining_vertices)
-        v_graph_edges.extend(
-            itertools.filterfalse(
-                lambda edge: any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles),
-                [LineString(pair) for pair in vertex_pairs],
-            )
-        )
-        vertex_index += num_vertices
+def get_visibility_graph(obstacles: List[Polygon], source=None, dest=None) -> List[LineString]:
+    v_graph_edges = []
+    vertices = set(tuple(coord) for obstacle in obstacles for coord in obstacle.boundary.coords)
     if source:
-        v_graph_edges.extend(
-            itertools.filterfalse(
-                lambda edge: any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles),
-                [LineString(pair) for pair in itertools.product([source], obstacle_vertices)],
-            )
-        )
+        vertices.add(source)
     if dest:
-        v_graph_edges.extend(
-            itertools.filterfalse(
-                lambda edge: any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles),
-                [LineString(pair) for pair in itertools.product([dest], obstacle_vertices)],
-            )
-        )
+        vertices.add(dest)
+    vertices = list(vertices)
+    for vertex in vertices[::-1]:
+        vertices.pop()
+        for edge in [LineString([vertex, other_vertex]) for other_vertex in vertices]:
+            if any(edge.intersects(obs) and not edge.touches(obs) for obs in obstacles):
+                continue
+            if any(edge.equals(other_edge) for other_edge in v_graph_edges):
+                continue
+            v_graph_edges.append(edge)
     return v_graph_edges
-
+    
 
 def get_shortest_path(visibility_graph: List[LineString], src, dest):
     """
     literally just dijekstra's
     """
-    vertices = set(vertex for edge in visibility_graph for vertex in edge.coords)
+    vertices = set(vertex for edge in visibility_graph for vertex in tuple(edge.coords))
+    edges = set((tuple(line.coords[0]), tuple(line.coords[1])) for line in visibility_graph)
     unvisited = list(vertices)  # type: list[list[int]]
     dist = {}  # type: dict[list[int], int]
     prev = {}  # type: dict[list[int], list[int]]
@@ -144,10 +104,7 @@ def get_shortest_path(visibility_graph: List[LineString], src, dest):
         current_vertex_neighbors = [
             vertex
             for vertex in unvisited
-            if any(
-                LineString([current_vertex, vertex]).equals(edge)
-                for edge in visibility_graph
-            )
+            if (tuple(current_vertex), tuple(vertex)) in edges or (tuple(vertex), tuple(current_vertex)) in edges
         ]
         for v in current_vertex_neighbors:
             alt_dist = dist[current_vertex] + LineString([current_vertex, v]).length
@@ -169,7 +126,6 @@ def get_points_and_dist(line):
 
 
 if __name__ == "__main__":
-    # print(get_minkowsky_sum(Polygon([(5,3), (5,4), (4,3)]), 3))
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "Robot",
@@ -199,6 +155,12 @@ if __name__ == "__main__":
     with open(robot, "r") as f:
         source, dist = get_points_and_dist(f.readline())
 
+    # #==========================test==============================================
+    # c_space_obstacles = [get_minkowsky_sum(p, dist) for p in workspace_obstacles]
+    # lines = get_visibility_graph(c_space_obstacles)
+    # exit()
+    # #========================end test============================================
+
     # step 1:
     c_space_obstacles = [get_minkowsky_sum(p, dist) for p in workspace_obstacles]
     plotter1 = Plotter()
@@ -226,7 +188,6 @@ if __name__ == "__main__":
         dest = tuple(map(float, f.readline().split(",")))
 
     lines = get_visibility_graph(c_space_obstacles, source, dest)
-    # TODO: fill in the next line
     shortest_path, cost = get_shortest_path(lines, source, dest)
 
     plotter3 = Plotter()
