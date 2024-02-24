@@ -42,8 +42,12 @@ def get_minkowsky_sum(original_shape: Polygon, r: float) -> Polygon:
         vertex_new.append(new_point)
         r_angle = get_angle_to_x_axis(vertex_r[r_index], vertex_r[r_index + 1])
         o_angle = get_angle_to_x_axis(vertex_o[o_index], vertex_o[o_index + 1])
+        # print(f"r1, r2: {vertex_r[r_index]}, {vertex_r[r_index + 1]}, r_angle: {r_angle}")
+        # print(f"o1, o2: {vertex_o[o_index]}, {vertex_o[o_index + 1]}, o_angle: {o_angle}")
         if o_index > len(original_shape.exterior.coords) - 2:
             o_angle += 360
+        if r_index > 3:
+            r_angle += 360
         if r_angle < o_angle:
             r_index += 1
         elif r_angle > o_angle:
